@@ -20,10 +20,13 @@ const int SOCKET_ERROR = -1;
 #include <atomic>
 #include <functional>
 #include <exception>
+#include <chrono>
+
+#define DEFAULTBUF_LEN 4096
 
 
 namespace masesk {
-	const int BUFF_SIZE = 4096;
+	const int BUFF_SIZE = DEFAULTBUF_LEN;
 	struct socket_error_exception : public std::exception
 	{
 		const char * what() const throw ()
@@ -36,6 +39,13 @@ namespace masesk {
 		const char * what() const throw ()
 		{
 			return "Can't create a socket!";
+		}
+	};
+	struct socket_send_exception : socket_error_exception
+	{
+		const char* what() const throw ()
+		{
+			return "Can't send data on socket!";
 		}
 	};
 	struct data_size_exception : public std::exception
@@ -117,18 +127,43 @@ namespace masesk {
 			sockQuit();
 		}
 
-		void socketSend(const std::string &channelName,  const std::string &data) {
+		int socketSendToServer(const std::string &channelName,  const std::string &data, int timeout=1000) {
+			SOCKET sock = client_sockets.at(channelName);
 			if (data.size() > BUFF_SIZE) {
 				throw masesk::data_size_exception();
 			}
-
+			timeout = timeout <= 0 ? 1 : timeout;
 			if (client_sockets.find(channelName) != client_sockets.end()) {
-				SOCKET sock = client_sockets.at(channelName);
+				setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof timeout);
 				int sendResult = send(sock, data.c_str(), data.size() + 1, 0);
 				if (sendResult == SOCKET_ERROR)
 				{
-					throw masesk::socket_error_exception();
+					throw masesk::socket_send_exception();
 				}
+				return sendResult;
+			}
+		}
+
+		int socketReceiveResponseFromServer(const std::string& channelName, char(&serverResponse)[DEFAULTBUF_LEN], int timeout = 1000) {
+			SOCKET sock = client_sockets.at(channelName);
+			timeout = timeout <= 0 ? 1 : timeout;
+			if (client_sockets.find(channelName) != client_sockets.end()) {
+				setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof timeout);
+				int bytesReceived = recv(sock, serverResponse, sizeof(serverResponse), 0);
+				if (bytesReceived == SOCKET_ERROR) {
+					std::fill_n(serverResponse, sizeof(serverResponse), NULL);
+				}
+				return bytesReceived;
+			}
+		}
+
+		int socketCleanBuffer(const std::string& channelName) {
+			if (client_sockets.find(channelName) != client_sockets.end()) {
+				SOCKET sock = client_sockets.at(channelName);
+				char tempSocketResponse[DEFAULTBUF_LEN];
+				int timeout = 1;
+				setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof timeout);
+				return recv(sock, tempSocketResponse, sizeof(tempSocketResponse), 0);
 			}
 		}
 
