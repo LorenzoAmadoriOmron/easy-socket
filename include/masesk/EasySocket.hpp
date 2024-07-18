@@ -153,6 +153,12 @@ namespace masesk {
 				if (bytesReceived == SOCKET_ERROR) {
 					std::fill_n(serverResponse, sizeof(serverResponse), NULL);
 				}
+				else {
+					for (int i = bytesReceived; i < DEFAULTBUF_LEN; i++)
+					{
+						serverResponse[i] = NULL;
+					}
+				}
 				return bytesReceived;
 			}
 		}
